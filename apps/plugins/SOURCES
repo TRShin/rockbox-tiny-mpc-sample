@@ -113,6 +113,8 @@ pictureflow.c
 
 #endif /* PLUGIN_BUFFER_SIZE <= 0x20000 */
 
+tinympcsample.c
+
 metronome.c
 
 2048.c
