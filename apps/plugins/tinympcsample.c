@@ -18,46 +18,58 @@
  *
  ****************************************************************************/
 
-/* tinympcsample rockbox application */
+/* tinympcsample rockbox application (super bare bones) */
 
 #include "plugin.h"
 
-/* this is the plugin entry point */
+/* Checks a specific wav containing dir if a wav file exists, on success
+ * modifies the caller's filepath to the wav file */
+void import_first_wav(char* filepath)
+{
+    /* Test opening the dir which will contain the wav file(s) */
+    DIR* wav_dir = rb->opendir('../../build-dir/simdisk/simtracks/');
+    if (wav_dir) {
+        struct dirent* wav_dir_ent;
+
+        /* readdir() advances the file stream each call */
+        /* Function expects correct file type and organization
+         * Error check if no dir and skip . .. entries */
+        while ((wav_dir_end = rb->readdir(wav_dir)) != NULL) {
+            if (wav_dir_ent->d_name[0] != '.') {
+                break;
+            }
+        }
+
+        if (wav_dir_end == NULL) return;
+
+        /* On the first wav file found, construct and assign the path */
+        rb->snprintf(filepath, sizeof(filepath), '../../build-dir/simdisk/simtracks/%s', entry->d_name);
+
+    }
+    return;
+}
+
+/* This is the plugin entry point */
 enum plugin_status plugin_start(const void* parameter)
 {
     (void)parameter;
+
+    /* For testing, lets import the first file from the specified 
+     * dir which should be a .wav */
     char filepath[MAX_PATH];
-    bool filefound = false;
+    import_first_wav(filepath);
 
-    while (true)
-    {
-        int action = rb->get_action(CONTEXT_STD, TIMEOUT_BLOCK);
+    /* TBD: check the files size and determine alloc size for the buffer */
+    if (filepath) {}
 
-        if (action == ACTION_STD_OK) 
-            break;
-        else if (action == ACTION_STD_CANCEL) 
-            return PLUGIN_OK;
-    }
+    /* TBD: RAM alloc strat */
+    static struct buflib_context tmpc_ctx;
+    size_t buf_size;
+    void *plugin_buf = rb->plugin_get_buffer(&buf_size);
+    rb->buflib_init(&tmpc_ctx, plugin_buf, buf_size);
 
-    DIR* dir = rb->opendir("../../build-dir/simdisk/sudofiles/");
-    if (dir) {
-        struct dirent* entry;
-        while (entry == readdir(dir)) {
-            if (entry->d_name[0] == ".") {
-                continue;
-        }
-
-        rb->snprintf(filepath, sizeof(filepath), "../../build-dir/simdisk/sudofiles/", entry->d_name);
-        filefound = true;
-        break;
-        }
-    }
-
-    if (filefound) {
-        rb->playlist_create(NULL, NULL);
-        rb->playlist_insert_track(NULL, filepath, 0, true, true);
-        rb->playlist_start(0, 0, 0);
-    }
+    /* TBD: Main loop */
+    while (true) {}
 
     return PLUGIN_OK;
 }
