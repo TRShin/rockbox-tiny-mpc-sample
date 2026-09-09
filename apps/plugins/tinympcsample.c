@@ -22,9 +22,33 @@
 
 #include "plugin.h"
 
-/* Checks a specific wav containing dir if a wav file exists, on success
- * modifies the caller's filepath to the wav file */
-void import_first_wav(char* filepath)
+/* .wav header struct
+ *
+ * Header is composed of 3 parts: 
+ *      1. RIFF chunk descriptor
+ *      2. fmt sup-chunk
+ *      3. data sub-chunk
+ *
+ * Endianess matters...
+ * How are bytes packed in the actual header? lets pack
+ */
+#pragma pack(1)
+struct wav_header
+{
+    char chunk_id[4];
+    unsigned long chunk_size;
+    char format[4];
+    char fmt_id[4];
+    unsigned short fmt_size;
+    unsigned short num_channels;
+    unsigned long sample_rate;
+    unsigned long byte_rate;
+    unsigned short block_align;
+    unsigned short bits_per_sample;
+}
+
+/* Constructs the first .wav filepath */
+void construct_wav_path(char* filepath)
 {
     /* Test opening the dir which will contain the wav file(s) */
     DIR* wav_dir = rb->opendir('../../build-dir/simdisk/simtracks/');
@@ -54,13 +78,36 @@ enum plugin_status plugin_start(const void* parameter)
 {
     (void)parameter;
 
-    /* For testing, lets import the first file from the specified 
-     * dir which should be a .wav */
+    /* Import .wav */
     char filepath[MAX_PATH];
-    import_first_wav(filepath);
+    char header_buf[44];
+    int path_fd;
+    ssize_t read_valid;
+
+    construct_wav_path(filepath);
+    path_fd = rb->open(filepath);
+    read_valid = rb->read(path_fd, &header_buf, 44);
+
+    if (read_valid < 0) { 
+        rb->splash("Read invalid, byte-reading error");
+        return PLUGIN_ERROR;
+    }
 
     /* TBD: check the files size and determine alloc size for the buffer */
-    if (filepath) {}
+
+    /* TBD URGNT: Check if the size of the header struct is < 44 or memcpy will
+     * corrupt mem */
+
+
+    /* TBD: recheck wav import flow: 
+     *      path construction -> read header into buf -> cpy to struct */
+
+    /* Read from the .wav header - We need to figure out how big the file is 
+     * so we can alloc an appropriate amount */
+    wav_header first_wav_header;
+    if (filepath != NULL) {
+        memcpy(first_wav_header, header_buf, sizeof(struct wav_header));
+    }
 
     /* TBD: RAM alloc strat */
     static struct buflib_context tmpc_ctx;
