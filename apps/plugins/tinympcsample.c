@@ -36,38 +36,41 @@
 struct wav_header
 {
     char chunk_id[4];
-    unsigned long chunk_size;
+    uint32_t chunk_size;
     char format[4];
     char fmt_id[4];
-    unsigned short fmt_size;
-    unsigned short num_channels;
-    unsigned long sample_rate;
-    unsigned long byte_rate;
-    unsigned short block_align;
-    unsigned short bits_per_sample;
-}
+    uint32_t fmt_size;
+    uint16_t audio_format;
+    uint16_t num_channels;
+    uint32_t sample_rate;
+    uint32_t byte_rate;
+    uint16_t block_align;
+    uint16_t bits_per_sample;
+    char data_id[4];
+    uint32_t data_size;
+};
 
 /* Constructs the first .wav filepath */
-void construct_wav_path(char* filepath)
+void construct_wav_path(char* filepath, int path_size)
 {
-    /* Test opening the dir which will contain the wav file(s) */
-    DIR* wav_dir = rb->opendir('../../build-dir/simdisk/simtracks/');
+    /* Test opening the dir which will contain the .wav file(s) */
+    DIR* wav_dir = rb->opendir("/simtracks/");
     if (wav_dir) {
         struct dirent* wav_dir_ent;
 
         /* readdir() advances the file stream each call */
         /* Function expects correct file type and organization
          * Error check if no dir and skip . .. entries */
-        while ((wav_dir_end = rb->readdir(wav_dir)) != NULL) {
+        while ((wav_dir_ent = rb->readdir(wav_dir)) != NULL) {
             if (wav_dir_ent->d_name[0] != '.') {
                 break;
             }
         }
 
-        if (wav_dir_end == NULL) return;
+        if (wav_dir_ent == NULL) return;
 
         /* On the first wav file found, construct and assign the path */
-        rb->snprintf(filepath, sizeof(filepath), '../../build-dir/simdisk/simtracks/%s', entry->d_name);
+        rb->snprintf(filepath, path_size, "/simtracks/%s", wav_dir_ent->d_name);
 
     }
     return;
@@ -84,39 +87,45 @@ enum plugin_status plugin_start(const void* parameter)
     int path_fd;
     ssize_t read_valid;
 
-    construct_wav_path(filepath);
-    path_fd = rb->open(filepath);
-    read_valid = rb->read(path_fd, &header_buf, 44);
+    construct_wav_path(filepath, MAX_PATH);
+    path_fd = rb->open(filepath, O_RDONLY);
+    read_valid = rb->read(path_fd, header_buf, 44);
 
-    if (read_valid < 0) { 
-        rb->splash("Read invalid, byte-reading error");
+    if (read_valid < 0 || path_fd < 0) { 
+        rb->splash(HZ*2, "Read invalid, byte-reading error or file open error");
         return PLUGIN_ERROR;
     }
 
-    /* TBD: check the files size and determine alloc size for the buffer */
-
-    /* TBD URGNT: Check if the size of the header struct is < 44 or memcpy will
-     * corrupt mem */
-
-
-    /* TBD: recheck wav import flow: 
-     *      path construction -> read header into buf -> cpy to struct */
-
     /* Read from the .wav header - We need to figure out how big the file is 
      * so we can alloc an appropriate amount */
-    wav_header first_wav_header;
-    if (filepath != NULL) {
-        memcpy(first_wav_header, header_buf, sizeof(struct wav_header));
+    struct wav_header first_wav_header;
+
+    /* Header size test */
+    if (sizeof(first_wav_header) != 44) {
+        rb->splash(HZ*2, ".wav header size issue");
+        return PLUGIN_ERROR;
     }
 
+    memcpy(&first_wav_header, header_buf, sizeof(struct wav_header));
+
     /* TBD: RAM alloc strat */
+    /*
     static struct buflib_context tmpc_ctx;
     size_t buf_size;
     void *plugin_buf = rb->plugin_get_buffer(&buf_size);
     rb->buflib_init(&tmpc_ctx, plugin_buf, buf_size);
+    */
 
     /* TBD: Main loop */
-    while (true) {}
+    while (true) {
+        rb->splash(HZ*2, "Entered the main while loop successfully");
+        rb->sleep(10);
+
+        rb->splashf(HZ*2, "Header RIFF?: %s", first_wav_header.chunk_id);
+        rb->sleep(10);
+
+        break;
+    }
 
     return PLUGIN_OK;
 }
