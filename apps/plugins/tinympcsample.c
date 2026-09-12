@@ -71,8 +71,9 @@ void construct_wav_path(char* filepath, int path_size)
 
         /* On the first wav file found, construct and assign the path */
         rb->snprintf(filepath, path_size, "/simtracks/%s", wav_dir_ent->d_name);
-
     }
+
+    rb->closedir(wav_dir);
     return;
 }
 
@@ -92,7 +93,7 @@ enum plugin_status plugin_start(const void* parameter)
     read_valid = rb->read(path_fd, header_buf, 44);
 
     if (read_valid < 0 || path_fd < 0) { 
-        rb->splash(HZ*2, "Read invalid, byte-reading error or file open error");
+        rb->splashf(HZ*2, "Read invalid, byte-reading error or file open error");
         return PLUGIN_ERROR;
     }
 
@@ -106,23 +107,49 @@ enum plugin_status plugin_start(const void* parameter)
         return PLUGIN_ERROR;
     }
 
+    /* Copy exactly 44 bytes of memory from the header buffer and into the struct
+     * Since our header struct is not padded we can just copy the raw bytes directly */ 
     memcpy(&first_wav_header, header_buf, sizeof(struct wav_header));
 
-    /* TBD: RAM alloc strat */
+    /* Close the file descriptor */
+    rb->close(path_fd);
+
+    /* Try print the size of the .wav */ 
     /*
-    static struct buflib_context tmpc_ctx;
-    size_t buf_size;
-    void *plugin_buf = rb->plugin_get_buffer(&buf_size);
-    rb->buflib_init(&tmpc_ctx, plugin_buf, buf_size);
+    rb->splashf(HZ*2, "Should be data chunk?: %.4s", first_wav_header.data_id);
+    rb->splashf(HZ*2, "Size of data chunk?: %" PRIu32 ": ", first_wav_header.data_size);
+    rb->splashf(HZ*2, "Sample rate?: %" PRIu32 ": ", first_wav_header.sample_rate);
+    sleep(50);
     */
 
-    /* TBD: Main loop */
+    /* TBD: RAM alloc strat */
+    /* Test how much size we have */
+    size_t buf_size;
+    void *plugin_buf = rb->plugin_get_buffer(&buf_size);
+    static struct buflib_context tmpc_ctx;
+    rb->buflib_init(&tmpc_ctx, plugin_buf, buf_size);
+
+    size_t buflib_avail_size = rb->buflib_available(&tmpc_ctx);
+    /* Determined around 524000 Bytes */
+    rb->splashf(HZ*2, "Size available: %zu", buflib_avail_size);
+
+    /* -- Sudo code for Pad mode -- */
+
+    /* In Pad mode, the user will choose a track to open, choose a pad to define, then
+     * will define the pad by setting start and end points based on the timestamp (potentially) */
+
     while (true) {
-        rb->splash(HZ*2, "Entered the main while loop successfully");
+
+        /* debug to be removed */
+        rb->splash(HZ, "Entered the main while loop successfully");
         rb->sleep(10);
 
-        rb->splashf(HZ*2, "Header RIFF?: %s", first_wav_header.chunk_id);
-        rb->sleep(10);
+       /* Flow from plugin entry to "Pad mode", pressing x button returns back a "page"
+        *       A. x button will be pressed to enter Sample mode
+        *       B. x button will be pressed to enter Pad edit mode 
+        *       C. Pad can be modified
+        */ 
+
 
         break;
     }
