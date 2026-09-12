@@ -20,7 +20,42 @@
 
 /* tinympcsample rockbox application (super bare bones) */
 
+/* Application description and Manual:
+ *
+ * Graph rep:
+ * Timeline page <--> Pad assignment page
+ * Timeline page <--> Recording page TBD
+ * Pad assignment page <--> Pad assignment page
+ *
+ * Users will enter the default, "timeline" page upon opening the applicaiton. 
+ * A Timeline is just a ...
+ *
+ * The timeline will be empty and cleared each boot of the app
+ *
+ * How is the timeline organized? "Record" playback to add "components" to the timeline
+ *
+ */
+
 #include "plugin.h"
+
+/* Exclusively testing Ipod nano 2G */
+#define ROCKPAINT_QUIT      ( ~BUTTON_MAIN )
+#define ROCKPAINT_DRAW      BUTTON_SELECT
+#define ROCKPAINT_MENU      ( BUTTON_SELECT | BUTTON_MENU )
+#define ROCKPAINT_TOOLBAR   ( BUTTON_MENU | BUTTON_LEFT )
+#define ROCKPAINT_TOOLBAR2  ( BUTTON_MENU | BUTTON_RIGHT )
+#define ROCKPAINT_UP        BUTTON_MENU
+#define ROCKPAINT_DOWN      BUTTON_PLAY
+#define ROCKPAINT_LEFT      BUTTON_LEFT
+#define ROCKPAINT_RIGHT     BUTTON_RIGHT
+
+/* Plugin page control */
+enum current_page 
+{
+    TIMELINE,
+    SAMPLE,
+    RECORD
+};
 
 /* .wav header struct
  *
@@ -29,8 +64,8 @@
  *      2. fmt sup-chunk
  *      3. data sub-chunk
  *
- * Endianess matters...
- * How are bytes packed in the actual header? lets pack
+ * Endianess matters ...
+ * Im pretty sure its little endian for everything aside from the char arrarys?
  */
 #pragma pack(1)
 struct wav_header
@@ -133,6 +168,11 @@ enum plugin_status plugin_start(const void* parameter)
     /* Determined around 524000 Bytes */
     rb->splashf(HZ*2, "Size available: %zu", buflib_avail_size);
 
+
+    /* TBD: Also check the "actual" buffers size */
+
+
+
     /* -- Sudo code for Pad mode -- */
 
     /* In Pad mode, the user will choose a track to open, choose a pad to define, then
@@ -149,6 +189,8 @@ enum plugin_status plugin_start(const void* parameter)
         *       B. x button will be pressed to enter Pad edit mode 
         *       C. Pad can be modified
         */ 
+        
+        if ()
 
 
         break;
