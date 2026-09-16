@@ -723,6 +723,14 @@ struct plugin_api {
     int  (*lang_is_rtl)(void);
 
     /* the buflib memory management library */
+    
+    /* TRShin modification */
+    void   (*buflib_put_data_pinned)(struct buflib_context *ctx, void *data);
+    void*  (*buflib_get_data_pinned)(struct buflib_context *ctx, int handle);
+    void   (*buflib_unpin)(struct buflib_context *ctx, int handle);
+    void   (*buflib_pin)(struct buflib_context *ctx, int handle);
+    size_t (*buflib_allocatable)(struct buflib_context *ctx);
+
     void   (*buflib_init)(struct buflib_context* ctx, void* buf, size_t size);
     size_t (*buflib_available)(struct buflib_context* ctx);
     int    (*buflib_alloc)(struct buflib_context* ctx, size_t size);

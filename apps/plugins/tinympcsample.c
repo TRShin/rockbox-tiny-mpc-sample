@@ -20,42 +20,35 @@
 
 /* tinympcsample rockbox application (super bare bones) */
 
-/* Application description and Manual:
- *
- * Graph rep:
- * Timeline page <--> Pad assignment page
- * Timeline page <--> Recording page TBD
- * Pad assignment page <--> Pad assignment page
- *
- * Users will enter the default, "timeline" page upon opening the applicaiton. 
- * A Timeline is just a ...
- *
- * The timeline will be empty and cleared each boot of the app
- *
- * How is the timeline organized? "Record" playback to add "components" to the timeline
- *
- */
-
 #include "plugin.h"
 
 /* Exclusively testing Ipod nano 2G */
-#define ROCKPAINT_QUIT      ( ~BUTTON_MAIN )
-#define ROCKPAINT_DRAW      BUTTON_SELECT
-#define ROCKPAINT_MENU      ( BUTTON_SELECT | BUTTON_MENU )
-#define ROCKPAINT_TOOLBAR   ( BUTTON_MENU | BUTTON_LEFT )
-#define ROCKPAINT_TOOLBAR2  ( BUTTON_MENU | BUTTON_RIGHT )
-#define ROCKPAINT_UP        BUTTON_MENU
-#define ROCKPAINT_DOWN      BUTTON_PLAY
-#define ROCKPAINT_LEFT      BUTTON_LEFT
-#define ROCKPAINT_RIGHT     BUTTON_RIGHT
+#define TMPCS_SELECT    BUTTON_SELECT
+#define TMPCS_UP        BUTTON_MENU
+#define TMPCS_DOWN      BUTTON_PLAY
+#define TMPCS_LEFT      BUTTON_LEFT
+#define TMPCS_RIGHT     BUTTON_RIGHT
 
 /* Plugin page control */
-enum current_page 
+enum pages
 {
     TIMELINE,
     SAMPLE,
+    CHOP,
     RECORD
 };
+
+/* Pad meta data 
+ * HOLD on this and experiment with pcm 
+ */
+
+/* 
+struct pad_info {
+    int key;
+    type begin;
+    type end;
+};
+*/
 
 /* .wav header struct
  *
@@ -112,22 +105,101 @@ void construct_wav_path(char* filepath, int path_size)
     return;
 }
 
+/* Dont even test state management, figure out how to use the pcm buffer */
+#if 0
+void page_enter(int page, int action)
+{
+    switch (page) {
+        case TIMELINE:
+        {}
+        case SAMPLE:
+        {}
+        case CHOP:
+        {
+            /* FIRST: test the pcm how to do playback we can find how to save state possibly */ 
+
+
+            /* how to know what pad was selected? - Pass in the action? */
+            /* Create a struct with the data that needs to be saved to memory 
+             *
+             * Key, Markers, ...
+             *
+             */
+
+            break;
+        }
+        case RECORD:
+        {}
+
+        /* In the future probably want to return a return code */
+        default: return;
+    }
+
+    /* In the future probably want to return a return code */
+    return;
+}
+
+void page_exit(int page)
+{}
+
+int page_update(int page, int action)
+{
+    switch (page) {
+        case TIMELINE:
+        {
+            switch (action) {
+                case TMPCS_SELECT: return SAMPLE;
+                default: break;
+            }
+            break;
+        }
+
+        case SAMPLE:
+        {
+            switch (action) {
+                case TPMS_LEFT: return CHOP;
+            }
+            break;
+        }
+
+        case CHOP:
+        {
+            switch (action) {
+
+            }
+        }
+
+        case RECORD:
+        {
+            break;
+        }
+
+        default: return page;
+    }
+}
+#endif
+
 /* This is the plugin entry point */
 enum plugin_status plugin_start(const void* parameter)
 {
     (void)parameter;
 
-    /* Import .wav */
-    char filepath[MAX_PATH];
-    char header_buf[44];
-    int path_fd;
-    ssize_t read_valid;
+    /* TBD: Default to Timeline page on entry 
+     * int current_page = TIMELINE, previous_page = TIMELINE;
+     */
+
+    /* Find .wav on disk -> allocate buffer in mem -> copy .wav data to memory -> call playback function */
+    char filepath[MAX_PATH], header_buf[44];
 
     construct_wav_path(filepath, MAX_PATH);
-    path_fd = rb->open(filepath, O_RDONLY);
-    read_valid = rb->read(path_fd, header_buf, 44);
+    int path_fd = rb->open(filepath, O_RDONLY);
+    if (path_fd < 0) {
+        rb->splashf(HZ*2, "Open file error");
+        return PLUGIN_ERROR;
+    }
 
-    if (read_valid < 0 || path_fd < 0) { 
+    ssize_t read_valid = rb->read(path_fd, header_buf, 44);
+    if (read_valid != 44) { 
         rb->splashf(HZ*2, "Read invalid, byte-reading error or file open error");
         return PLUGIN_ERROR;
     }
@@ -135,8 +207,6 @@ enum plugin_status plugin_start(const void* parameter)
     /* Read from the .wav header - We need to figure out how big the file is 
      * so we can alloc an appropriate amount */
     struct wav_header first_wav_header;
-
-    /* Header size test */
     if (sizeof(first_wav_header) != 44) {
         rb->splash(HZ*2, ".wav header size issue");
         return PLUGIN_ERROR;
@@ -146,55 +216,91 @@ enum plugin_status plugin_start(const void* parameter)
      * Since our header struct is not padded we can just copy the raw bytes directly */ 
     memcpy(&first_wav_header, header_buf, sizeof(struct wav_header));
 
-    /* Close the file descriptor */
-    rb->close(path_fd);
+    /* Init the rb buffer in memory */
 
-    /* Try print the size of the .wav */ 
-    /*
-    rb->splashf(HZ*2, "Should be data chunk?: %.4s", first_wav_header.data_id);
-    rb->splashf(HZ*2, "Size of data chunk?: %" PRIu32 ": ", first_wav_header.data_size);
-    rb->splashf(HZ*2, "Sample rate?: %" PRIu32 ": ", first_wav_header.sample_rate);
-    sleep(50);
-    */
-
-    /* TBD: RAM alloc strat */
-    /* Test how much size we have */
-    size_t buf_size;
-    void *plugin_buf = rb->plugin_get_buffer(&buf_size);
+    /* Really 31 MB? Seems so... */
     static struct buflib_context tmpc_ctx;
-    rb->buflib_init(&tmpc_ctx, plugin_buf, buf_size);
+    size_t rb_audiobuffer;
 
-    size_t buflib_avail_size = rb->buflib_available(&tmpc_ctx);
-    /* Determined around 524000 Bytes */
-    rb->splashf(HZ*2, "Size available: %zu", buflib_avail_size);
+    void *audio_buf_ptr = rb->plugin_get_audio_buffer(&rb_audiobuffer);
 
+    rb->buflib_init(&tmpc_ctx, audio_buf_ptr, rb_audiobuffer);
 
-    /* TBD: Also check the "actual" buffers size */
+    int test_handle = rb->buflib_alloc(&tmpc_ctx, first_wav_header.data_size);
+    if (test_handle <= 0 ) {
+        rb->splash(HZ*2, "Alloc memory error");
+        return PLUGIN_ERROR;
+    }
 
+    /* Access to the rbbuffer */
 
+    /* Issue with using a pointer to the data is that the memory management system moves blocks around to defrag,
+     * thus it can be the case that the pointer wont point to our buffer after defrag / move so lets pin the 
+     * buffer while we write and read from it.
+     */
+    void *my_data = buflib_get_data_pinned(&tmpc_ctx, test_handle);
+    
+    /* Copy actual pcm data from the track to a buffer: */
 
-    /* -- Sudo code for Pad mode -- */
+    /* Move the fd 44 bytes over to skip the header and access the raw PCM */
+    off_t data_start = rb->lseek(path_fd, 44, SEEK_SET);
+    if (data_start != 44) {
+        rb->splash(HZ*2, "Wrong offset, cannot copy memory");
+        return PLUGIN_ERROR;
+    }
 
-    /* In Pad mode, the user will choose a track to open, choose a pad to define, then
-     * will define the pad by setting start and end points based on the timestamp (potentially) */
+    /* Read PCM into the rbbuffer */
+    ssize_t pcmdata_read_valid = rb->read(path_fd, my_data, first_wav_header.data_size);
+    if (pcmdata_read_valid < 0 || path_fd < 0) { 
+        rb->splashf(HZ*2, "Read invalid, byte-reading error or file open error");
+        return PLUGIN_ERROR;
+    }
+    //rb->splashf(HZ*2, "Bytes read: %zd should equal data size from the header: %u", pcmdata_read_valid, first_wav_header.data_size);
 
+    /* Close the file descriptor after read */
+    rb->close(path_fd);
+    rb->splash(HZ*2, "closed fd");
+
+    /* NO AUDIO Resolved! - Raw PCM defaults to 0 gain potentially? So manually set the amp yay */ 
+    rb->mixer_channel_set_amplitude(PCM_MIXER_CHAN_PLAYBACK, MIX_AMP_UNITY);
+
+    /* Data hopefully in rbbuffer, playback track */
+    rb->mixer_channel_play_data(
+                                PCM_MIXER_CHAN_PLAYBACK,
+                                NULL,
+                                my_data,
+                                first_wav_header.data_size
+                               );
+
+    /* Busy wait until playback finishes */
+    while (rb->mixer_channel_status(PCM_MIXER_CHAN_PLAYBACK) == CHANNEL_PLAYING) {
+        rb->sleep(1);
+    }
+
+    /* Main loop */
     while (true) {
+        /* int action = rb->get_action(CONTEXT_STD, TIMEOUT_BLOCK, NULL); */
 
-        /* debug to be removed */
-        rb->splash(HZ, "Entered the main while loop successfully");
-        rb->sleep(10);
+        /*
+        if (current_page != previous_page) {
+            page_exit(previous_page);
+            page_enter(current_page, action);
+            previous_page = current_page;
+        }
 
-       /* Flow from plugin entry to "Pad mode", pressing x button returns back a "page"
-        *       A. x button will be pressed to enter Sample mode
-        *       B. x button will be pressed to enter Pad edit mode 
-        *       C. Pad can be modified
-        */ 
-        
-        if ()
+        int new_page = page_update(current_page, action);
+        previous_page = current_page;
+        current_page = new_page;
+        */
 
-
+        rb->splashf(HZ*2, "IN WHILE");
+        rb->sleep(44);
         break;
     }
+
+    /* Unpin and free memory before returning */ 
+    rb->buflib_put_data_pinned(&tmpc_ctx, my_data);
+    test_handle = rb->buflib_free(&tmpc_ctx, test_handle);
 
     return PLUGIN_OK;
 }

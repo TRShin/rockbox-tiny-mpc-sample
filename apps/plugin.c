@@ -620,6 +620,14 @@ static const struct plugin_api rockbox_api = {
     lang_is_rtl,
 
     /* the buflib memory management library */
+
+    /* TRShin Modification */
+    buflib_put_data_pinned, 
+    buflib_get_data_pinned,
+    buflib_unpin,
+    buflib_pin,
+    buflib_allocatable,
+
     buflib_init,
     buflib_available,
     buflib_alloc,
