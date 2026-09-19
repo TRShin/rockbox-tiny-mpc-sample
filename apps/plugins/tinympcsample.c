@@ -38,17 +38,13 @@ enum pages
     RECORD
 };
 
-/* Pad meta data 
- * HOLD on this and experiment with pcm 
+/* Pad meta data and context
+ * Keep simple for now
  */
-
-/* 
+static struct buflib_context pad_ctx;
 struct pad_info {
-    int key;
-    type begin;
-    type end;
+    int action;
 };
-*/
 
 /* .wav header struct
  *
@@ -116,8 +112,39 @@ void page_enter(int page, int action)
         {}
         case CHOP:
         {
-            /* FIRST: test the pcm how to do playback we can find how to save state possibly */ 
+            /* Select track -> Set markers -> */
 
+            /* Select track */
+            /* Splash current pad -> Prompt num files */
+            /* For now just load first */
+
+            /* Find .wav on disk -> allocate buffer in mem -> copy .wav data to memory -> call playback function */
+            char filepath[MAX_PATH], header_buf[44];
+
+            construct_wav_path(filepath, MAX_PATH);
+            int path_fd = rb->open(filepath, O_RDONLY);
+            if (path_fd < 0) {
+                rb->splashf(HZ*2, "Open file error");
+                return PLUGIN_ERROR;
+            }
+
+            ssize_t read_valid = rb->read(path_fd, header_buf, 44);
+            if (read_valid != 44) { 
+                rb->splashf(HZ*2, "Read invalid, byte-reading error or file open error");
+                return PLUGIN_ERROR;
+            }
+
+            /* Read from the .wav header - We need to figure out how big the file is 
+             * so we can alloc an appropriate amount */
+            struct wav_header first_wav_header;
+            if (sizeof(first_wav_header) != 44) {
+                rb->splash(HZ*2, ".wav header size issue");
+                return PLUGIN_ERROR;
+            }
+
+            /* Copy exactly 44 bytes of memory from the header buffer and into the struct
+             * Since our header struct is not padded we can just copy the raw bytes directly */ 
+            memcpy(&first_wav_header, header_buf, sizeof(struct wav_header));
 
             /* how to know what pad was selected? - Pass in the action? */
             /* Create a struct with the data that needs to be saved to memory 
@@ -125,6 +152,8 @@ void page_enter(int page, int action)
              * Key, Markers, ...
              *
              */
+            
+            
 
             break;
         }
@@ -179,42 +208,25 @@ int page_update(int page, int action)
 }
 #endif
 
+/* Allocates 3 of the pad_info structs in memory */
+/* TODO: look into buffer context */
+void pad_mem_init()
+{
+    
+}
+
+void pad_mem_free(){}
+
 /* This is the plugin entry point */
 enum plugin_status plugin_start(const void* parameter)
 {
     (void)parameter;
 
-    /* TBD: Default to Timeline page on entry 
-     * int current_page = TIMELINE, previous_page = TIMELINE;
-     */
+    pad_mem_init();
+        
+    int current_page = TIMELINE, previous_page = TIMELINE;
 
-    /* Find .wav on disk -> allocate buffer in mem -> copy .wav data to memory -> call playback function */
-    char filepath[MAX_PATH], header_buf[44];
-
-    construct_wav_path(filepath, MAX_PATH);
-    int path_fd = rb->open(filepath, O_RDONLY);
-    if (path_fd < 0) {
-        rb->splashf(HZ*2, "Open file error");
-        return PLUGIN_ERROR;
-    }
-
-    ssize_t read_valid = rb->read(path_fd, header_buf, 44);
-    if (read_valid != 44) { 
-        rb->splashf(HZ*2, "Read invalid, byte-reading error or file open error");
-        return PLUGIN_ERROR;
-    }
-
-    /* Read from the .wav header - We need to figure out how big the file is 
-     * so we can alloc an appropriate amount */
-    struct wav_header first_wav_header;
-    if (sizeof(first_wav_header) != 44) {
-        rb->splash(HZ*2, ".wav header size issue");
-        return PLUGIN_ERROR;
-    }
-
-    /* Copy exactly 44 bytes of memory from the header buffer and into the struct
-     * Since our header struct is not padded we can just copy the raw bytes directly */ 
-    memcpy(&first_wav_header, header_buf, sizeof(struct wav_header));
+    /* moved wav file import to the state machine */
 
     /* Init the rb buffer in memory */
 
@@ -279,23 +291,25 @@ enum plugin_status plugin_start(const void* parameter)
 
     /* Main loop */
     while (true) {
-        /* int action = rb->get_action(CONTEXT_STD, TIMEOUT_BLOCK, NULL); */
+        int action = rb->get_action(CONTEXT_STD, TIMEOUT_BLOCK, NULL);
 
-        /*
         if (current_page != previous_page) {
             page_exit(previous_page);
             page_enter(current_page, action);
             previous_page = current_page;
         }
 
+        /* Will there ever be a case when state needs updating, but is
+         * not prompted by the action? */
         int new_page = page_update(current_page, action);
         previous_page = current_page;
         current_page = new_page;
-        */
 
+#if 0
         rb->splashf(HZ*2, "IN WHILE");
         rb->sleep(44);
         break;
+#endif
     }
 
     /* Unpin and free memory before returning */ 
