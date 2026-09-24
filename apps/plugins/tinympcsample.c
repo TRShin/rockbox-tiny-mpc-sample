@@ -21,29 +21,50 @@
 /* tinympcsample rockbox application (super bare bones) */
 
 #include "plugin.h"
+#include "action.h"
+#include "button.h"
 
-/* Exclusively testing Ipod nano 2G */
-#define TMPCS_SELECT    BUTTON_SELECT
-#define TMPCS_UP        BUTTON_MENU
-#define TMPCS_DOWN      BUTTON_PLAY
-#define TMPCS_LEFT      BUTTON_LEFT
-#define TMPCS_RIGHT     BUTTON_RIGHT
+/* Exclusively testing Ipod nano 2G, create custom mapping */
+#define CONTEXT_TMPCS (CONTEXT_CUSTOM | 1)
 
-/* Plugin page control */
+enum {
+    ACTION_TMPCS_LEFT = LAST_ACTION_PLACEHOLDER + 1,
+    ACTION_TMPCS_RIGHT,
+    ACTION_TMPCS_SELECT,
+    ACTION_TMPCS_DOWN,
+    ACTION_TMPCS_UP,
+};
+
+static const struct button_mapping button_context_tmpcs[] = {
+    { ACTION_TMPCS_LEFT,         BUTTON_LEFT,                   BUTTON_NONE },
+    { ACTION_TMPCS_RIGHT,        BUTTON_RIGHT,                  BUTTON_NONE },
+    { ACTION_TMPCS_SELECT,       BUTTON_SELECT,                 BUTTON_NONE },
+    { ACTION_TMPCS_DOWN,         BUTTON_PLAY,                   BUTTON_NONE },
+    { ACTION_TMPCS_UP,        BUTTON_MENU|BUTTON_REL,        BUTTON_MENU },
+
+    /* TBD 
+    *{ ACTION_KBD_UP,           BUTTON_SCROLL_BACK,                    BUTTON_NONE },
+    *{ ACTION_KBD_UP,           BUTTON_SCROLL_BACK|BUTTON_REPEAT,      BUTTON_NONE },
+    *{ ACTION_KBD_DOWN,         BUTTON_SCROLL_FWD,                     BUTTON_NONE },
+    *{ ACTION_KBD_DOWN,         BUTTON_SCROLL_FWD|BUTTON_REPEAT,       BUTTON_NONE },
+    */
+
+    LAST_ITEM_IN_LIST__NEXTLIST(CONTEXT_STD)
+};
+
+static const struct button_mapping *tmpcs_get_context_map(int context)
+{
+   (void)context;
+    return button_context_tmpcs;
+}
+
+/* Page control */
 enum pages
 {
     TIMELINE,
     SAMPLE,
     CHOP,
     RECORD
-};
-
-/* Pad meta data and context
- * Keep simple for now
- */
-static struct buflib_context pad_ctx;
-struct pad_info {
-    int action;
 };
 
 /* .wav header struct
@@ -56,7 +77,7 @@ struct pad_info {
  * Endianess matters ...
  * Im pretty sure its little endian for everything aside from the char arrarys?
  */
-#pragma pack(1)
+#pragma pack(push, 1)
 struct wav_header
 {
     char chunk_id[4];
@@ -73,6 +94,25 @@ struct wav_header
     char data_id[4];
     uint32_t data_size;
 };
+#pragma(pop)
+
+/* Pad meta data */
+enum pad_state {
+    PAD_SET,
+    PAD_NOT_SET
+};
+
+struct pad_info {
+    enum pad_state state;
+    struct wav_header header;
+    char filepath[MAX_PATH];
+    int action;
+    int handle;
+    size_t start_offset;
+    size_t end_offset;
+};
+
+static struct pad_info pad_all[3];
 
 /* Constructs the first .wav filepath */
 void construct_wav_path(char* filepath, int path_size)
@@ -101,64 +141,82 @@ void construct_wav_path(char* filepath, int path_size)
     return;
 }
 
-/* Dont even test state management, figure out how to use the pcm buffer */
-#if 0
+/* Parses .wav header into the pad */
+void parse_wav_header(struct pad_info *curr_pad_info) 
+{
+    char header_buf[44];
+
+    /* Build path to .wav */
+    construct_wav_path(curr_pad_info->filepath, MAX_PATH);
+    int path_fd = rb->open(curr_pad_info->filepath, O_RDONLY);
+    if (path_fd < 0) {
+        rb->splashf(HZ*2, "Open file error");
+        return;
+    }
+
+    /* Why am I not reading directly into the header struct ??? */
+    ssize_t read_valid = rb->read(path_fd, header_buf, 44);
+    if (read_valid != 44) { 
+        rb->splashf(HZ*2, "Read invalid, byte-reading error or file open error");
+        return;
+    }
+
+    rb->close(path_fd);
+
+    /* Copy header struct into pad_info */
+    if (sizeof(curr_pad_info->header) != 44) {
+        rb->splash(HZ*2, ".wav header size issue");
+        return;
+    }
+
+    /* Copy exactly 44 bytes of memory from the header buffer and into the struct
+     * Since our header struct is not padded we can just copy the raw bytes directly */ 
+    memcpy(&curr_pad_info->header, header_buf, 44);
+}
+
 void page_enter(int page, int action)
 {
     switch (page) {
         case TIMELINE:
-        {}
+        {
+            rb->splash(HZ*3, "You are entering the TIMELINE page");
+            break;
+        }
         case SAMPLE:
-        {}
+        {
+
+            rb->splash(HZ*3, "You are entering the SAMPLE page");
+            break;
+        }
         case CHOP:
         {
-            /* Select track -> Set markers -> */
+            rb->splash(HZ*3, "You are entering the CHOP page");
 
-            /* Select track */
-            /* Splash current pad -> Prompt num files */
-            /* For now just load first */
+#if 0
+            if (pad_all[action].state == PAD_NOT_SET) {
 
-            /* Find .wav on disk -> allocate buffer in mem -> copy .wav data to memory -> call playback function */
-            char filepath[MAX_PATH], header_buf[44];
+                rb->splashf(HZ*2, "Modify pad %d", action);
 
-            construct_wav_path(filepath, MAX_PATH);
-            int path_fd = rb->open(filepath, O_RDONLY);
-            if (path_fd < 0) {
-                rb->splashf(HZ*2, "Open file error");
-                return PLUGIN_ERROR;
+                /* Move .wav header info into pad_info 
+                 * Basically init the pad's sample */
+                struct pad_info curr_pad_info;
+                parse_wav_header(&curr_pad_info);
+
+                curr_pad_info.action = action;
+                curr_pad_info.state = PAD_SET;
             }
-
-            ssize_t read_valid = rb->read(path_fd, header_buf, 44);
-            if (read_valid != 44) { 
-                rb->splashf(HZ*2, "Read invalid, byte-reading error or file open error");
-                return PLUGIN_ERROR;
+            else {
+                break;
             }
-
-            /* Read from the .wav header - We need to figure out how big the file is 
-             * so we can alloc an appropriate amount */
-            struct wav_header first_wav_header;
-            if (sizeof(first_wav_header) != 44) {
-                rb->splash(HZ*2, ".wav header size issue");
-                return PLUGIN_ERROR;
-            }
-
-            /* Copy exactly 44 bytes of memory from the header buffer and into the struct
-             * Since our header struct is not padded we can just copy the raw bytes directly */ 
-            memcpy(&first_wav_header, header_buf, sizeof(struct wav_header));
-
-            /* how to know what pad was selected? - Pass in the action? */
-            /* Create a struct with the data that needs to be saved to memory 
-             *
-             * Key, Markers, ...
-             *
-             */
-            
-            
+#endif
 
             break;
         }
         case RECORD:
-        {}
+        {
+            rb->splash(HZ*3, "You are entering the RECORD page");
+            break;
+        }
 
         /* In the future probably want to return a return code */
         default: return;
@@ -169,7 +227,11 @@ void page_enter(int page, int action)
 }
 
 void page_exit(int page)
-{}
+{
+
+    rb->splashf(HZ*3, "Exiting page: %d", page);
+    return;
+}
 
 int page_update(int page, int action)
 {
@@ -177,7 +239,8 @@ int page_update(int page, int action)
         case TIMELINE:
         {
             switch (action) {
-                case TMPCS_SELECT: return SAMPLE;
+                case ACTION_TMPCS_LEFT: return SAMPLE;
+                case ACTION_TMPCS_RIGHT: return RECORD;
                 default: break;
             }
             break;
@@ -186,7 +249,9 @@ int page_update(int page, int action)
         case SAMPLE:
         {
             switch (action) {
-                case TPMS_LEFT: return CHOP;
+                case ACTION_TMPCS_LEFT: return CHOP;
+                case ACTION_TMPCS_UP: return TIMELINE;
+                default: break;
             }
             break;
         }
@@ -194,42 +259,36 @@ int page_update(int page, int action)
         case CHOP:
         {
             switch (action) {
-
+                case ACTION_TMPCS_UP: return TIMELINE;
+                default: break;
             }
+            break;
         }
 
+        /* Temp Disable */
         case RECORD:
         {
+            switch (action) {
+                case ACTION_TMPCS_UP: return TIMELINE;
+                default: break;
+            }
             break;
         }
 
         default: return page;
     }
+    return page;
 }
-#endif
-
-/* Allocates 3 of the pad_info structs in memory */
-/* TODO: look into buffer context */
-void pad_mem_init()
-{
-    
-}
-
-void pad_mem_free(){}
 
 /* This is the plugin entry point */
 enum plugin_status plugin_start(const void* parameter)
 {
     (void)parameter;
 
-    pad_mem_init();
-        
     int current_page = TIMELINE, previous_page = TIMELINE;
 
-    /* moved wav file import to the state machine */
-
+#if 0
     /* Init the rb buffer in memory */
-
     /* Really 31 MB? Seems so... */
     static struct buflib_context tmpc_ctx;
     size_t rb_audiobuffer;
@@ -251,7 +310,7 @@ enum plugin_status plugin_start(const void* parameter)
      * buffer while we write and read from it.
      */
     void *my_data = buflib_get_data_pinned(&tmpc_ctx, test_handle);
-    
+
     /* Copy actual pcm data from the track to a buffer: */
 
     /* Move the fd 44 bytes over to skip the header and access the raw PCM */
@@ -288,33 +347,48 @@ enum plugin_status plugin_start(const void* parameter)
     while (rb->mixer_channel_status(PCM_MIXER_CHAN_PLAYBACK) == CHANNEL_PLAYING) {
         rb->sleep(1);
     }
+#endif
 
+    rb->splash(HZ*2, "Entering loop"); 
     /* Main loop */
     while (true) {
-        int action = rb->get_action(CONTEXT_STD, TIMEOUT_BLOCK, NULL);
 
+        /*
+         * Want: Pages dictate actions
+         *       Pages should only update after an action
+         *
+         *
+         *
+         * Defualt to TIMELINE
+         * get_action blocks until action
+         * say action is up -> page gets updated 
+         * curr prev page diff -> next loop action is grabbed again, 
+         * enter page diff if block, the prev page calls exit, curr page enters 
+         * prev page updates to curr
+         *
+         *
+         */
         if (current_page != previous_page) {
             page_exit(previous_page);
             page_enter(current_page, action);
             previous_page = current_page;
         }
 
+        rb->splash(HZ*2, "In loop"); 
+        int action = rb->get_custom_action(CONTEXT_TMPCS, TIMEOUT_BLOCK, tmpcs_get_context_map);
+
         /* Will there ever be a case when state needs updating, but is
          * not prompted by the action? */
-        int new_page = page_update(current_page, action);
-        previous_page = current_page;
-        current_page = new_page;
+        current_page = page_update(current_page, action);
 
-#if 0
-        rb->splashf(HZ*2, "IN WHILE");
-        rb->sleep(44);
-        break;
-#endif
+        if (current_page == RECORD) break;
     }
 
+#if 0
     /* Unpin and free memory before returning */ 
     rb->buflib_put_data_pinned(&tmpc_ctx, my_data);
     test_handle = rb->buflib_free(&tmpc_ctx, test_handle);
+#endif 
 
     return PLUGIN_OK;
 }
